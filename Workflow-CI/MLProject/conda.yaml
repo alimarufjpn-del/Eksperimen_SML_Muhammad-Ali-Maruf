@@ -1,18 +1,17 @@
-name: mlflow-env
+name: water_potability_ci_env
 channels:
   - conda-forge
+  - defaults
 dependencies:
-  - python=3.12
-  - pip<=25.3
+  - python=3.12.7
+  - pip=24.0
+  - numpy=1.26.4
+  - pandas=2.2.1
+  - scikit-learn=1.5.0
+  - matplotlib=3.8.0
+  - seaborn=0.13.0
+  - joblib=1.4.2
   - pip:
-    - mlflow
-    - cloudpickle
-    - numpy
-    - pandas
-    - psutil
-    - pyarrow
-    - scikit-learn
-    - scipy
-    - dagshub
-    - matplotlib
-    - seaborn
+    - mlflow>=2.14.0
+    - boto3>=1.34.0
+    - psutil>=5.9.0
