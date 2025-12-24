@@ -1,1 +1,386 @@
+name: MLflow CI/CD Pipeline
 
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'MLProject/**'
+      - '.github/workflows/**'
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    # Run every day at 00:00 UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      retrain:
+        description: 'Force retrain model'
+        required: false
+        default: 'false'
+
+env:
+  MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+  MLFLOW_EXPERIMENT_NAME: "water_potability_ci_github"
+  PYTHON_VERSION: '3.12.7'
+
+jobs:
+  setup-and-check:
+    name: "1. Setup Environment"
+    runs-on: ubuntu-latest
+    
+    outputs:
+      python-version: ${{ steps.setup-python.outputs.python-version }}
+      environment-ready: ${{ steps.check-env.outputs.ready }}
+    
+    steps:
+    - name: "Set up job"
+      run: |
+        echo "🚀 Starting MLflow CI/CD Pipeline"
+        echo "Event: ${{ github.event_name }}"
+        echo "Ref: ${{ github.ref }}"
+        echo "SHA: ${{ github.sha }}"
+    
+    - name: "Checkout repository"
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: "Set up Python ${{ env.PYTHON_VERSION }}"
+      id: setup-python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: "Check Environment"
+      id: check-env
+      run: |
+        echo "🧪 Checking environment..."
+        
+        # Check Python version
+        python --version
+        python -c "import sys; print(f'Python {sys.version}')"
+        
+        # Check directory structure
+        echo "📁 Project structure:"
+        ls -la
+        echo "📁 MLProject structure:"
+        ls -la MLProject/ || echo "MLProject folder not found"
+        
+        # Check if required files exist
+        REQUIRED_FILES=("modelling.py" "conda.yaml" "MLProject" "water_potability_preprocessing.csv")
+        missing_files=0
+        
+        for file in "${REQUIRED_FILES[@]}"; do
+          if [ -f "MLProject/$file" ]; then
+            echo "✅ Found: MLProject/$file"
+          else
+            echo "❌ Missing: MLProject/$file"
+            missing_files=$((missing_files + 1))
+          fi
+        done
+        
+        if [ $missing_files -eq 0 ]; then
+          echo "✅ All required files found"
+          echo "ready=true" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Missing $missing_files required files"
+          echo "ready=false" >> $GITHUB_OUTPUT
+        fi
+        
+        # Check MLflow tracking URI
+        if [ -n "${{ secrets.MLFLOW_TRACKING_URI }}" ]; then
+          echo "✅ MLFLOW_TRACKING_URI is set"
+        else
+          echo "⚠️ MLFLOW_TRACKING_URI is not set, using local tracking"
+        fi
+
+  install-dependencies:
+    name: "2. Install Dependencies"
+    runs-on: ubuntu-latest
+    needs: setup-and-check
+    if: needs.setup-and-check.outputs.environment-ready == 'true'
+    
+    steps:
+    - name: "Checkout repository"
+      uses: actions/checkout@v4
+    
+    - name: "Set up Python ${{ env.PYTHON_VERSION }}"
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: "Install system dependencies"
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y graphviz pandoc
+        
+    - name: "Create virtual environment"
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+        python --version
+        
+    - name: "Install MLflow and dependencies"
+      run: |
+        source venv/bin/activate
+        echo "📦 Installing dependencies..."
+        
+        # Upgrade pip
+        python -m pip install --upgrade pip
+        
+        # Install dependencies from conda.yaml
+        echo "Installing from conda.yaml..."
+        pip install mlflow==2.14.0
+        pip install numpy==1.26.4
+        pip install pandas==2.2.1
+        pip install scikit-learn==1.5.0
+        pip install matplotlib==3.8.0
+        pip install seaborn==0.13.0
+        pip install joblib==1.4.2
+        pip install boto3==1.34.0
+        pip install psutil==5.9.0
+        
+        # Verify installations
+        echo "📊 Installed packages:"
+        pip list | grep -E "(mlflow|numpy|pandas|scikit|matplotlib|seaborn)"
+        
+        # Test MLflow
+        mlflow --version
+        
+    - name: "Validate conda.yaml"
+      run: |
+        source venv/bin/activate
+        echo "📝 Validating conda.yaml..."
+        if [ -f "MLProject/conda.yaml" ]; then
+          echo "conda.yaml content:"
+          cat MLProject/conda.yaml
+        else
+          echo "❌ conda.yaml not found"
+          exit 1
+        fi
+
+  run-mlflow-training:
+    name: "3. Run MLflow Training"
+    runs-on: ubuntu-latest
+    needs: install-dependencies
+    if: needs.setup-and-check.outputs.environment-ready == 'true'
+    
+    outputs:
+      run_id: ${{ steps.get-run-id.outputs.run_id }}
+      accuracy: ${{ steps.extract-metrics.outputs.accuracy }}
+    
+    steps:
+    - name: "Checkout repository"
+      uses: actions/checkout@v4
+    
+    - name: "Set up Python ${{ env.PYTHON_VERSION }}"
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: "Install dependencies"
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r MLProject/conda.yaml
+        
+    - name: "Run MLflow Project"
+      id: run-mlflow
+      env:
+        MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI || 'http://localhost:5000' }}
+        MLFLOW_EXPERIMENT_NAME: ${{ env.MLFLOW_EXPERIMENT_NAME }}
+        MLFLOW_USERNAME: ${{ secrets.MLFLOW_USERNAME }}
+        MLFLOW_PASSWORD: ${{ secrets.MLFLOW_PASSWORD }}
+        GITHUB_ACTIONS: 'true'
+      run: |
+        echo "🚀 Running MLflow project..."
+        
+        # Change to MLProject directory
+        cd MLProject
+        
+        # Run MLflow project
+        echo "Starting MLflow run..."
+        
+        # Capture run output
+        RUN_OUTPUT=$(mlflow run . --experiment-name "$MLFLOW_EXPERIMENT_NAME" 2>&1 | tee mlflow_run.log)
+        
+        # Check for run ID in output
+        if echo "$RUN_OUTPUT" | grep -q "Run ID:"; then
+          RUN_ID=$(echo "$RUN_OUTPUT" | grep "Run ID:" | awk '{print $3}')
+          echo "✅ MLflow Run ID found: $RUN_ID"
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+        else
+          # Alternative: Check mlruns directory
+          if [ -d "mlruns" ]; then
+            LATEST_RUN=$(ls -t mlruns/0 | head -n 1)
+            if [ -n "$LATEST_RUN" ]; then
+              echo "✅ Found latest run in mlruns: $LATEST_RUN"
+              echo "run_id=$LATEST_RUN" >> $GITHUB_OUTPUT
+            fi
+          fi
+        fi
+        
+        # Save run output
+        echo "MLflow run output:"
+        cat mlflow_run.log
+        
+        # Check for success
+        if [ $? -eq 0 ]; then
+          echo "✅ MLflow project completed successfully"
+        else
+          echo "❌ MLflow project failed"
+          exit 1
+        fi
+    
+    - name: "Extract metrics from MLflow"
+      id: extract-metrics
+      run: |
+        cd MLProject
+        
+        # Try to get metrics from run_info.json if exists
+        if [ -f "run_info.json" ]; then
+          ACCURACY=$(python -c "import json; data = json.load(open('run_info.json')); print(data.get('accuracy', 0))")
+          RUN_ID=$(python -c "import json; data = json.load(open('run_info.json')); print(data.get('run_id', ''))")
+          
+          echo "📊 Model Accuracy: $ACCURACY"
+          echo "🏷️ Run ID: $RUN_ID"
+          
+          echo "accuracy=$ACCURACY" >> $GITHUB_OUTPUT
+          
+          # Save metrics for next steps
+          echo "METRICS_ACCURACY=$ACCURACY" >> $GITHUB_ENV
+          echo "METRICS_RUN_ID=$RUN_ID" >> $GITHUB_ENV
+        else
+          echo "⚠️ run_info.json not found"
+          echo "accuracy=0" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: "Get latest MLflow run_id"
+      id: get-run-id
+      run: |
+        cd MLProject
+        
+        # Multiple methods to get run_id
+        if [ -n "$METRICS_RUN_ID" ]; then
+          echo "Using run_id from run_info.json: $METRICS_RUN_ID"
+          echo "run_id=$METRICS_RUN_ID" >> $GITHUB_OUTPUT
+        elif [ -d "mlruns" ]; then
+          # Get latest run from mlruns directory
+          LATEST_RUN=$(find mlruns -name "meta.yaml" -exec dirname {} \; | xargs -I {} basename {} | sort | tail -n 1)
+          if [ -n "$LATEST_RUN" ]; then
+            echo "Found latest run in mlruns: $LATEST_RUN"
+            echo "run_id=$LATEST_RUN" >> $GITHUB_OUTPUT
+          else
+            echo "Could not find run_id"
+            echo "run_id=unknown" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "No run_id found"
+          echo "run_id=unknown" >> $GITHUB_OUTPUT
+        fi
+
+  post-processing:
+    name: "4. Post Processing & Artifacts"
+    runs-on: ubuntu-latest
+    needs: run-mlflow-training
+    if: always()
+    
+    steps:
+    - name: "Checkout repository"
+      uses: actions/checkout@v4
+    
+    - name: "Download artifacts"
+      uses: actions/download-artifact@v4
+      with:
+        name: mlflow-artifacts
+        path: artifacts/
+    
+    - name: "Generate report"
+      run: |
+        echo "📋 GENERATING TRAINING REPORT"
+        echo "=============================="
+        echo "Run ID: ${{ needs.run-mlflow-training.outputs.run_id }}"
+        echo "Accuracy: ${{ needs.run-mlflow-training.outputs.accuracy }}"
+        echo "Status: ${{ job.status }}"
+        echo "Trigger: ${{ github.event_name }}"
+        echo "Branch: ${{ github.ref }}"
+        echo "Commit: ${{ github.sha }}"
+        echo "Timestamp: $(date)"
+        echo "=============================="
+        
+        # Create HTML report
+        cat > training_report.md << EOF
+        # MLflow Training Report
+        
+        ## Summary
+        - **Status**: ${{ job.status }}
+        - **Run ID**: ${{ needs.run-mlflow-training.outputs.run_id }}
+        - **Accuracy**: ${{ needs.run-mlflow-training.outputs.accuracy }}
+        - **Trigger**: ${{ github.event_name }}
+        - **Branch**: ${{ github.ref }}
+        - **Commit**: ${{ github.sha }}
+        - **Timestamp**: $(date -Iseconds)
+        
+        ## Artifacts Generated
+        1. Trained Random Forest Model
+        2. Feature Importance Plot
+        3. Confusion Matrix
+        4. StandardScaler object
+        5. Training metadata
+        
+        ## Next Steps
+        1. Deploy model to staging
+        2. Run A/B testing
+        3. Monitor model performance
+        
+        EOF
+        
+        echo "📄 Report saved to training_report.md"
+    
+    - name: "Upload artifacts"
+      uses: actions/upload-artifact@v4
+      with:
+        name: mlflow-training-results
+        path: |
+          MLProject/mlruns/
+          MLProject/run_info.json
+          MLProject/feature_importance.csv
+          MLProject/feature_importance.png
+          MLProject/confusion_matrix.png
+          training_report.md
+        retention-days: 7
+    
+    - name: "Send notification"
+      if: always()
+      run: |
+        if [ "${{ job.status }}" = "success" ]; then
+          echo "✅ Training completed successfully!"
+          echo "Run ID: ${{ needs.run-mlflow-training.outputs.run_id }}"
+          echo "Accuracy: ${{ needs.run-mlflow-training.outputs.accuracy }}"
+        else
+          echo "❌ Training failed!"
+          echo "Please check the logs for details."
+        fi
+
+  deploy-check:
+    name: "5. Deployment Check"
+    runs-on: ubuntu-latest
+    needs: run-mlflow-training
+    if: needs.run-mlflow-training.result == 'success' && github.event_name != 'pull_request'
+    
+    steps:
+    - name: "Check deployment readiness"
+      run: |
+        ACCURACY="${{ needs.run-mlflow-training.outputs.accuracy }}"
+        
+        # Convert to float for comparison
+        if (( $(echo "$ACCURACY > 0.7" | bc -l) )); then
+          echo "✅ Model accuracy ($ACCURACY) meets deployment threshold (0.7)"
+          echo "deployable=true" >> $GITHUB_OUTPUT
+        else
+          echo "⚠️ Model accuracy ($ACCURACY) below deployment threshold (0.7)"
+          echo "deployable=false" >> $GITHUB_OUTPUT
+        fi
+        
+        echo "🏷️ Run ID: ${{ needs.run-mlflow-training.outputs.run_id }}"
+        echo "📊 Accuracy: $ACCURACY"
