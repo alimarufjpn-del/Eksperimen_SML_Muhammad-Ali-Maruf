@@ -60,22 +60,24 @@ jobs:
         echo "Latest Run ID: $RUN_ID"
         echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
     
+
     - name: Upload MLflow Artifacts
       if: success()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  #  CORRECTED: Changed from v3 to v4
       with:
-        name: mlflow-artifacts
+        name: mlflow-artifacts-${{ github.run_id }}
         path: MLProject/mlruns/
         retention-days: 7
+
     
     - name: Notify Success
       if: success()
       run: |
-        echo "✅ Model training completed successfully!"
+        echo " Model training completed successfully!"
         echo "Run ID: $RUN_ID"
     
     - name: Notify Failure
       if: failure()
       run: |
-        echo "❌ Model training failed!"
+        echo " Model training failed!"
         exit 1
