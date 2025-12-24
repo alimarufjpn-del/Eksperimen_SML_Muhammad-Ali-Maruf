@@ -64,14 +64,22 @@ jobs:
         ls -la Workflow-CI/MLProject/MLProject
         ls -la Workflow-CI/MLProject/water_potability_preprocessing.csv 2>/dev/null || echo "File preprocessing.csv tidak ditemukan. Pastikan file dataset yang sudah dipreprocessing ada."
     
-    # 8. [KRITIS] Jalankan MLflow Project dari folder Workflow-CI/MLProject
-    - name: Run MLflow Project
-      id: run_mlflow
+       # GANTI DENGAN INI:
+    - name: Install Project Dependencies from conda.yaml
+      run: |
+        echo "Menginstal dependencies dari conda.yaml..."
+        # Install semua packages Python yang ada di conda.yaml menggunakan pip
+        cd Workflow-CI/MLProject
+        pip install numpy==1.26.4 pandas==2.2.0 scikit-learn==1.5.0 matplotlib==3.8.3 seaborn==0.13.2 mlflow==2.14.2
+
+    - name: Run Modelling Script Directly
+      id: run_model
       run: |
         cd Workflow-CI/MLProject
-        mlflow run . \
-          --experiment-name "water_potability_github_actions" \
-          --env-manager local
+        echo "Menjalankan modelling.py langsung..."
+        python modelling.py \
+          --data_path "water_potability_preprocessing.csv" \
+          --tracking_uri "${{ secrets.MLFLOW_TRACKING_URI }}"
     
     # 9. Ambil run_id dari hasil training terbaru untuk referensi
     - name: Get latest MLflow run_id
