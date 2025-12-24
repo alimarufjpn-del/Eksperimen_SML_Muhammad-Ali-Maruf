@@ -2,6 +2,8 @@
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
+import os
+import argparse
 
 from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import StandardScaler
@@ -9,19 +11,20 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
 import mlflow
-import argparse
 
 print('Import Library berhasil')
 
-def train_model(data_path, tracking_uri):
+def main(data_path, tracking_uri):
     # Set up mlflow
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment("water_potability_ci")
-
+    
+    print(f'MLflow Tracking URI: {tracking_uri}')
     print('Set-up berhasil')
 
     # Membaca dataset
     df = pd.read_csv(data_path)
+    print(f'Dataset shape: {df.shape}')
 
     # Pisahkan fitur dan Target
     X = df.drop('Potability', axis=1)
@@ -38,7 +41,7 @@ def train_model(data_path, tracking_uri):
     # Autolog
     mlflow.autolog()
 
-    with mlflow.start_run(run_name = "RF_ci"):
+    with mlflow.start_run(run_name="RF_CI_CD"):
 
         # Buat dan latih model Random Forest
         model = RandomForestClassifier(n_estimators=100, random_state=42)
@@ -48,12 +51,22 @@ def train_model(data_path, tracking_uri):
         # Evaluasi model
         accuracy = accuracy_score(y_test, y_pred)
         print("Akurasi:", accuracy)
+        
+        # Log parameter tambahan
+        mlflow.log_param("model_type", "RandomForest")
+        mlflow.log_param("n_estimators", 100)
         mlflow.log_metric("accuracy", accuracy)
+        
+        # Simpan model
+        mlflow.sklearn.log_model(model, "model")
+        
+        return accuracy
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=str, default="water_potability_preprocessing.csv")
-    parser.add_argument("--tracking_uri", type=str, default="http://localhost:5001")
+    parser.add_argument("--tracking_uri", type=str, default=os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001"))
+    
     args = parser.parse_args()
-
-    train_model(args.data_path, args.tracking_uri)
+    accuracy = main(args.data_path, args.tracking_uri)
+    print(f"Model training completed with accuracy: {accuracy}")
