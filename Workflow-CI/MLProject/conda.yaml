@@ -1,4 +1,4 @@
-name: water_potability_env
+name: water_potability_env_$(date +%s) 
 channels:
   - conda-forge
   - defaults
