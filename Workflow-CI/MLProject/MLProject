@@ -1,16 +1,10 @@
-name: Water_Potability_CI_Project
+name: water_potability_project
+
 conda_env: conda.yaml
+
 entry_points:
   main:
-    command: "python modelling.py"
-  train:
-    command: "python modelling.py"
     parameters:
-      tracking_uri:
-        description: "MLflow Tracking URI"
-        type: str
-        default: "http://localhost:5000"
-      experiment_name:
-        description: "Experiment name"
-        type: str
-        default: "water_potability_ci"
+      data_path: {type: str, default: "water_potability_preprocessing.csv"}
+      tracking_uri: {type: str, default: "http://localhost:5001"}
+    command: "python modelling.py --data_path {data_path} --tracking_uri {tracking_uri}"
