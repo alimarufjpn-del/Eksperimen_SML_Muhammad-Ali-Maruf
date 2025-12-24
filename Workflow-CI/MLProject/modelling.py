@@ -62,11 +62,37 @@ def main(data_path, tracking_uri):
         
         return accuracy
 
+
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=str, default="water_potability_preprocessing.csv")
-    parser.add_argument("--tracking_uri", type=str, default=os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5001"))
+    parser.add_argument("--tracking_uri", type=str, default=os.getenv("MLFLOW_TRACKING_URI", ""))
     
     args = parser.parse_args()
-    accuracy = main(args.data_path, args.tracking_uri)
-    print(f"Model training completed with accuracy: {accuracy}")
+    
+    # VERIFIKASI TRACKING URI
+    if not args.tracking_uri:
+        print("❌ ERROR: MLFLOW_TRACKING_URI tidak diberikan.")
+        print("   Cara 1: Atur secret 'MLFLOW_TRACKING_URI' di GitHub Repository Settings")
+        print("   Cara 2: Berikan langsung: --tracking_uri http://localhost:5001")
+        exit(1)
+    
+    # VERIFIKASI FILE DATASET
+    if not os.path.exists(args.data_path):
+        print(f"❌ ERROR: File dataset '{args.data_path}' tidak ditemukan.")
+        print(f"   File di direktori saat ini: {os.listdir('.')}")
+        exit(1)
+    
+    print(f"✅ Menggunakan dataset: {args.data_path}")
+    print(f"✅ Menggunakan MLflow URI: {args.tracking_uri}")
+    
+    try:
+        accuracy = main(args.data_path, args.tracking_uri)
+        print(f"✅ Model training selesai. Akurasi: {accuracy}")
+    except Exception as e:
+        print(f"❌ Error selama training: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        exit(1)
