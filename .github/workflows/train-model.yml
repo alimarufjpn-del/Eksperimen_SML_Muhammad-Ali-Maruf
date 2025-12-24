@@ -12,37 +12,35 @@ on:
 jobs:
   train:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Set up job
       run: echo "Starting MLflow training job..."
-    
+
     - name: Checkout repository
-      uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
-    
+      uses: actions/checkout@v5 # Updated from v3
+
     - name: Set up Python 3.12.7
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5 # Updated from v4
       with:
         python-version: '3.12.7'
-    
+
     - name: Check Environment
       run: |
         python --version
         pip --version
-    
+
     - name: Install dependencies
       run: |
         pip install --upgrade pip
         pip install mlflow scikit-learn pandas numpy matplotlib seaborn
-    
+
     - name: Set up MLflow Tracking URI
       run: |
         echo "MLFLOW_TRACKING_URI=${{ secrets.MLFLOW_TRACKING_URI }}" >> $GITHUB_ENV
         echo "MLFLOW_TRACKING_USERNAME=${{ secrets.MLFLOW_TRACKING_USERNAME }}" >> $GITHUB_ENV
         echo "MLFLOW_TRACKING_PASSWORD=${{ secrets.MLFLOW_TRACKING_PASSWORD }}" >> $GITHUB_ENV
-    
+
     - name: Run MLflow Project
       id: run_mlflow
       run: |
@@ -50,7 +48,7 @@ jobs:
         mlflow run . \
           --experiment-name "water_potability_github_actions" \
           --env-manager local
-    
+
     - name: Get latest MLflow run_id
       if: success()
       run: |
@@ -59,23 +57,24 @@ jobs:
         RUN_ID=$(ls -t mlruns/$(ls mlruns/ | head -1)/ | head -1)
         echo "Latest Run ID: $RUN_ID"
         echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
-    
+
     - name: Upload MLflow Artifacts
       if: success()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4 # CRITICAL FIX: Updated from v3
       with:
-        name: mlflow-artifacts
+        # Appending run-id makes the name unique for each workflow run
+        name: mlflow-artifacts-${{ github.run_id }}
         path: MLProject/mlruns/
         retention-days: 7
-    
+
     - name: Notify Success
       if: success()
       run: |
-        echo " Model training completed successfully!"
+        echo "✅ Model training completed successfully!"
         echo "Run ID: $RUN_ID"
-    
+
     - name: Notify Failure
       if: failure()
       run: |
-        echo " Model training failed!"
+        echo "❌ Model training failed!"
         exit 1
