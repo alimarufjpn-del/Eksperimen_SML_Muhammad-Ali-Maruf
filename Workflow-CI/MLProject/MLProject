@@ -1,5 +1,16 @@
-name: Eksperimen_SML_Muhammad_Ali
+name: Water_Potability_CI_Project
 conda_env: conda.yaml
 entry_points:
   main:
     command: "python modelling.py"
+  train:
+    command: "python modelling.py"
+    parameters:
+      tracking_uri:
+        description: "MLflow Tracking URI"
+        type: str
+        default: "http://localhost:5000"
+      experiment_name:
+        description: "Experiment name"
+        type: str
+        default: "water_potability_ci"
