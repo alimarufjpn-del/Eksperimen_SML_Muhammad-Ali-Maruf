@@ -6,5 +6,5 @@ entry_points:
   main:
     parameters:
       data_path: {type: str, default: "water_potability_preprocessing.csv"}
-      tracking_uri: {type: str, default: "http://localhost:5001"}
+      tracking_uri: {type: str, default: ""}  # BIARKAN KOSONG, akan diisi dari env var
     command: "python modelling.py --data_path {data_path} --tracking_uri {tracking_uri}"
